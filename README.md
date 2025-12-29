@@ -3,11 +3,9 @@
 基于 Next.js App Router + Drizzle + Vercel Postgres 的数据看板，用于拉取上游 CLIProxyAPI 的使用数据，持久化到数据库，并进行数据可视化。
 
 ## 功能
-- /api/sync 拉取 usage 并去重入库（支持 GET/POST，便于外部 Cron 或 CF Worker 调用）
-- /api/overview?days&model&route&page 汇总请求/Token/费用，支持时间范围、模型、Key 筛选
-- /api/prices 读取/保存模型单价，前端表单可配置
-- 前端图表：日粒度折线图、小时负载柱状图、模型费用列表，可切换最近 7/14/30 天
-
+- /api/sync 拉取上游 usage 并去重入库（支持 GET/POST，便于外部 Cron 或 CF Worker 调用）
+- 前端表单可配置模型单价
+- 前端图表：日粒度折线图、小时粒度柱状图、模型费用列表，支持时间范围、模型、Key 筛选
 
 ## 部署到 Vercel
 1. Fork 本仓库，创建 Vercel 项目并关联

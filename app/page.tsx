@@ -368,7 +368,7 @@ export default function DashboardPage() {
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>Usage Dashboard</h1>
-          <p className={`text-base ${darkMode ? "text-slate-400" : "text-slate-600"}`}>持久化的 CLIProxy 使用统计与费用分析</p>
+          <p className={`text-base ${darkMode ? "text-slate-400" : "text-slate-600"}`}>持久化的 CLIProxyAPI 使用统计与费用分析</p>
         </div>
         <div className="flex items-center gap-4">
           <button
