@@ -104,6 +104,7 @@ export default function DashboardPage() {
   const [editingPrice, setEditingPrice] = useState<ModelPrice | null>(null);
   const [editForm, setEditForm] = useState<PriceForm>({ model: "", inputPricePer1M: "", cachedInputPricePer1M: "", outputPricePer1M: "" });
   const [fullscreenChart, setFullscreenChart] = useState<"trend" | "pie" | "stacked" | null>(null);
+  const [hoveredPieIndex, setHoveredPieIndex] = useState<number | null>(null);
   const syncingRef = useRef(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
@@ -599,7 +600,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={overviewData.byDay} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <LineChart data={overviewData.byDay} margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="#334155" strokeDasharray="5 5" />
                   <XAxis dataKey="label" stroke="#94a3b8" fontSize={12} />
                   <YAxis yAxisId="left" stroke="#3b82f6" tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
@@ -661,49 +662,104 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
-          <div className="mt-2 h-72">
+          <div className="mt-2 flex gap-4 h-72">
             {loadingOverview ? (
-              <Skeleton className="h-full rounded-xl" />
+              <Skeleton className="flex-1 rounded-xl" />
             ) : showEmpty || !overviewData || overviewData.models.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-800/30 text-center">
+              <div className="flex-1 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-800/30 text-center">
                 <p className="text-base text-slate-400">暂无模型数据</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <Pie
-                    data={overviewData.models}
-                    dataKey={pieMode}
-                    nameKey="model"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="70%"
-                    innerRadius="30%"
-                    label={({ model, percent }) => `${model.length > 16 ? model.slice(0, 16) + ".." : model} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={{ stroke: darkMode ? "#94a3b8" : "#64748b", strokeWidth: 1 }}
-                    fontSize={11}
-                    animationDuration={300}
-                  >
-                    {overviewData.models.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ borderRadius: 12, backgroundColor: darkMode ? "#1e293b" : "#fff", border: darkMode ? "1px solid #334155" : "1px solid #e2e8f0", color: darkMode ? "#f1f5f9" : "#1e293b" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload || !payload[0]) return null;
-                      const data = payload[0].payload;
+              <>
+                {/* 饼图 */}
+                <div className="flex-shrink-0 w-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                      <Pie
+                        data={overviewData.models}
+                        dataKey={pieMode}
+                        nameKey="model"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius="85%"
+                        innerRadius="45%"
+                        animationDuration={300}
+                        onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                        onMouseLeave={() => setHoveredPieIndex(null)}
+                      >
+                        {overviewData.models.map((_, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={PIE_COLORS[index % PIE_COLORS.length]}
+                            fillOpacity={hoveredPieIndex === null || hoveredPieIndex === index ? 1 : 0.3}
+                            style={{ transition: 'fill-opacity 0.2s' }}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        position={{ x: 0, y: 0 }}
+                        wrapperStyle={{ zIndex: 1000 }}
+                        content={({ active, payload }) => {
+                          if (!active || !payload || !payload[0]) return null;
+                          const data = payload[0].payload;
+                          return (
+                            <div className={`rounded-xl border px-3 py-2 text-sm shadow-lg ${darkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white"}`}>
+                              <p className={`font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>{data.model}</p>
+                              <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.tokens)} tokens</p>
+                              <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.requests)} 请求数</p>
+                            </div>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* 自定义图例 */}
+                <div className="flex-1 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                  {[...overviewData.models]
+                    .sort((a, b) => b[pieMode] - a[pieMode])
+                    .map((item, sortedIndex) => {
+                      const originalIndex = overviewData.models.findIndex(m => m.model === item.model);
+                      const total = overviewData.models.reduce((sum, m) => sum + m[pieMode], 0);
+                      const percent = total > 0 ? (item[pieMode] / total) * 100 : 0;
+                      const isHighlighted = hoveredPieIndex === null || hoveredPieIndex === originalIndex;
                       return (
-                        <div className={`rounded-xl border px-3 py-2 text-sm shadow-lg ${darkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white"}`}>
-                          <p className={`font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>{data.model}</p>
-                          <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.tokens)} tokens</p>
-                          <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.requests)} 请求</p>
+                        <div 
+                          key={item.model} 
+                          className={`rounded-lg p-2 transition cursor-pointer ${
+                            isHighlighted 
+                              ? darkMode ? "bg-slate-700/30" : "bg-slate-100" 
+                              : "opacity-40"
+                          } ${darkMode ? "hover:bg-slate-700/50" : "hover:bg-slate-200"}`}
+                          onMouseEnter={() => setHoveredPieIndex(originalIndex)}
+                          onMouseLeave={() => setHoveredPieIndex(null)}
+                          style={{ transition: 'all 0.2s' }}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <div 
+                              className={`w-3 h-3 rounded-full flex-shrink-0 transition-all duration-200 ${
+                                isHighlighted && hoveredPieIndex === originalIndex ? 'ring-2 ring-offset-1' : ''
+                              }`}
+                              style={{ 
+                                backgroundColor: PIE_COLORS[originalIndex % PIE_COLORS.length],
+                                '--tw-ring-color': isHighlighted && hoveredPieIndex === originalIndex ? PIE_COLORS[originalIndex % PIE_COLORS.length] : 'transparent',
+                                transform: isHighlighted && hoveredPieIndex === originalIndex ? 'scale(1.2)' : 'scale(1)'
+                              } as React.CSSProperties} 
+                            />
+                            <p className={`text-sm font-medium truncate flex-1 ${darkMode ? "text-slate-200" : "text-slate-800"}`} title={item.model}>
+                              {item.model}
+                            </p>
                         </div>
-                      );
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+                        <div className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-600"} ml-5`}>
+                          <span className="font-semibold">{percent.toFixed(1)}%</span>
+                          <span className="mx-1.5">·</span>
+                          <span>{pieMode === "tokens" ? formatCompactNumber(item.tokens) : formatNumberWithCommas(item.requests)} {pieMode === "tokens" ? "tokens" : "次"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -796,7 +852,7 @@ export default function DashboardPage() {
             <h2 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>预估模型费用</h2>
             <span className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>基于配置的价格</span>
           </div>
-          <div className="scrollbar-slim mt-4 max-h-56 space-y-2 overflow-y-auto">
+          <div className="scrollbar-slim mt-3 max-h-64 min-h-[14rem] space-y-2 overflow-y-auto">
             {loadingOverview ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <div key={`model-skel-${i}`} className="rounded-xl">
@@ -820,7 +876,7 @@ export default function DashboardPage() {
                   <div>
                     <p className={`text-sm font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>{model.model}</p>
                     <p className={`text-xs ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
-                      {formatNumberWithCommas(model.requests)} 请求 • {formatCompactNumber(model.tokens)} tokens
+                      {formatNumberWithCommas(model.requests)} 请求数 • {formatCompactNumber(model.tokens)} tokens
                     </p>
                   </div>
                   <div className={`text-base font-semibold ${darkMode ? "text-emerald-400" : "text-emerald-600"}`}>{formatCurrency(model.cost)}</div>
@@ -840,9 +896,9 @@ export default function DashboardPage() {
           {status ? <p className="text-xs text-emerald-400">{status}</p> : null}
         </div>
 
-        <div className="mt-4 grid gap-6 lg:grid-cols-5">
-          <form onSubmit={handleSubmit} className={`rounded-xl border p-4 lg:col-span-2 ${darkMode ? "border-slate-700 bg-slate-800/50" : "border-slate-200 bg-slate-50"}`}>
-            <div className="grid gap-3">
+        <div className="mt-6 grid gap-6 lg:grid-cols-5">
+          <form onSubmit={handleSubmit} className={`rounded-xl border p-5 lg:col-span-2 ${darkMode ? "border-slate-700 bg-slate-800/50" : "border-slate-200 bg-slate-50"}`}>
+            <div className="grid gap-4">
               <label className={`text-sm font-medium ${darkMode ? "text-slate-300" : "text-slate-700"}`}>
                 模型名称
                 <ComboBox
@@ -1071,7 +1127,7 @@ export default function DashboardPage() {
             <div className="mt-4 h-[70vh]">
               {fullscreenChart === "trend" && overviewData && (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={overviewData.byDay} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <LineChart data={overviewData.byDay} margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="#334155" strokeDasharray="5 5" />
                     <XAxis dataKey="label" stroke="#94a3b8" fontSize={12} />
                     <YAxis yAxisId="left" stroke="#3b82f6" tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
@@ -1089,33 +1145,100 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               )}
               {fullscreenChart === "pie" && overviewData && overviewData.models.length > 0 && (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <Pie
-                      data={overviewData.models}
-                      dataKey={pieMode}
-                      nameKey="model"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius="60%"
-                      innerRadius="25%"
-                      label={({ model, percent }) => `${model.length > 20 ? model.slice(0, 20) + ".." : model} ${(percent * 100).toFixed(1)}%`}
-                      labelLine={{ stroke: darkMode ? "#94a3b8" : "#64748b", strokeWidth: 1 }}
-                      fontSize={12}
-                      animationDuration={300}
-                    >
-                      {overviewData.models.map((_, index) => (
-                        <Cell key={`cell-fs-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 12, backgroundColor: "#1e293b", border: "1px solid #334155", color: "#f1f5f9" }} formatter={(value: number) => [formatNumberWithCommas(value), pieMode === "tokens" ? "Tokens" : "请求"]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="flex gap-6 h-full">
+                  {/* 饼图 */}
+                  <div className="flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                        <Pie
+                          data={overviewData.models}
+                          dataKey={pieMode}
+                          nameKey="model"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius="75%"
+                          innerRadius="40%"
+                          animationDuration={300}
+                          onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                          onMouseLeave={() => setHoveredPieIndex(null)}
+                        >
+                          {overviewData.models.map((_, index) => (
+                            <Cell 
+                              key={`cell-fs-${index}`} 
+                              fill={PIE_COLORS[index % PIE_COLORS.length]}
+                              fillOpacity={hoveredPieIndex === null || hoveredPieIndex === index ? 1 : 0.3}
+                              style={{ transition: 'fill-opacity 0.2s' }}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          position={{ x: 0, y: 0 }}
+                          wrapperStyle={{ zIndex: 1000 }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload || !payload[0]) return null;
+                            const data = payload[0].payload;
+                            return (
+                              <div className={`rounded-xl border px-3 py-2 text-sm shadow-lg ${darkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white"}`}>
+                                <p className={`font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>{data.model}</p>
+                                <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.tokens)} tokens</p>
+                                <p className={darkMode ? "text-slate-300" : "text-slate-600"}>{formatNumberWithCommas(data.requests)} 请求数</p>
+                              </div>
+                            );
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {/* 自定义图例 */}
+                  <div className="w-80 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                    {[...overviewData.models]
+                      .sort((a, b) => b[pieMode] - a[pieMode])
+                      .map((item) => {
+                        const originalIndex = overviewData.models.findIndex(m => m.model === item.model);
+                        const total = overviewData.models.reduce((sum, m) => sum + m[pieMode], 0);
+                        const percent = total > 0 ? (item[pieMode] / total) * 100 : 0;
+                        const isHighlighted = hoveredPieIndex === null || hoveredPieIndex === originalIndex;
+                        return (
+                          <div 
+                            key={item.model} 
+                            className={`rounded-lg p-3 transition cursor-pointer ${
+                              isHighlighted 
+                                ? darkMode ? "bg-slate-700/30" : "bg-slate-100" 
+                                : "opacity-40"
+                            } ${darkMode ? "hover:bg-slate-700/50" : "hover:bg-slate-200"}`}
+                            onMouseEnter={() => setHoveredPieIndex(originalIndex)}
+                            onMouseLeave={() => setHoveredPieIndex(null)}
+                            style={{ transition: 'all 0.2s' }}
+                          >
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div 
+                                className={`w-4 h-4 rounded-full flex-shrink-0 transition-all duration-200 ${
+                                  isHighlighted && hoveredPieIndex === originalIndex ? 'ring-2 ring-offset-1' : ''
+                                }`}
+                                style={{ 
+                                  backgroundColor: PIE_COLORS[originalIndex % PIE_COLORS.length],
+                                  '--tw-ring-color': isHighlighted && hoveredPieIndex === originalIndex ? PIE_COLORS[originalIndex % PIE_COLORS.length] : 'transparent',
+                                  transform: isHighlighted && hoveredPieIndex === originalIndex ? 'scale(1.2)' : 'scale(1)'
+                                } as React.CSSProperties}
+                              />
+                              <p className={`text-base font-medium truncate flex-1 ${darkMode ? "text-slate-200" : "text-slate-800"}`} title={item.model}>
+                                {item.model}
+                              </p>
+                            </div>
+                            <div className={`text-sm ${darkMode ? "text-slate-400" : "text-slate-600"} ml-6`}>
+                              <span className="font-semibold">{percent.toFixed(1)}%</span>
+                              <span className="mx-1.5">·</span>
+                              <span>{pieMode === "tokens" ? formatCompactNumber(item.tokens) : formatNumberWithCommas(item.requests)} {pieMode === "tokens" ? "tokens" : "次"}</span>
+                            </div>
+                          </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
               {fullscreenChart === "stacked" && overviewData && (
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={hourlySeries} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <ComposedChart data={hourlySeries} margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#334155" : "#e2e8f0"} />
                     <XAxis dataKey="label" stroke={darkMode ? "#94a3b8" : "#64748b"} fontSize={12} tickFormatter={formatHourLabel} />
                     <YAxis yAxisId="left" stroke="#3b82f6" tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />

@@ -69,6 +69,12 @@ function withSessionCookie(response: NextResponse, token: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (isBypassedPath(pathname)) return NextResponse.next();
+  
+  // 允许访问登录页面和认证 API
+  if (pathname === "/login" || pathname.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
+  
   if (!password) return NextResponse.next();
 
   const expectedToken = expectedTokenPromise ? await expectedTokenPromise : null;
@@ -85,7 +91,10 @@ export async function middleware(request: NextRequest) {
     return withSessionCookie(res, headerResult.token);
   }
 
-  return unauthorized();
+  // 重定向到登录页面而不是返回 401
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("from", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

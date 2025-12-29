@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { BarChart3, FileText, Activity } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { BarChart3, FileText, Activity, LogOut } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 
 const links = [
@@ -12,9 +12,11 @@ const links = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [usageStatsEnabled, setUsageStatsEnabled] = useState<boolean | null>(null);
   const [usageStatsLoading, setUsageStatsLoading] = useState(false);
   const [showUsageConfirm, setShowUsageConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const loadToggle = useCallback(async () => {
     setUsageStatsLoading(true);
@@ -62,6 +64,17 @@ export default function Sidebar() {
     applyUsageToggle(nextEnabled);
   };
 
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLoggingOut(false);
+    }
+  };
+
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-slate-800 bg-slate-950 py-6">
       <div className="px-5">
@@ -88,7 +101,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto border-t border-slate-800 px-4 pt-4">
+      <div className="mt-auto border-t border-slate-800 px-4 pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-slate-400">
             <Activity className="h-4 w-4" />
@@ -106,6 +119,15 @@ export default function Sidebar() {
             {usageStatsLoading ? "..." : usageStatsEnabled ? "开" : "关"}
           </button>
         </div>
+        
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="w-full flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:opacity-50"
+        >
+          <LogOut className="h-4 w-4" />
+          {loggingOut ? "退出中..." : "退出登录"}
+        </button>
       </div>
       {showUsageConfirm ? (
         <div

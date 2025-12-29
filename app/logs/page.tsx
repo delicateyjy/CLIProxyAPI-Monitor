@@ -54,6 +54,8 @@ export default function LogsPage() {
   const [errorLogName, setErrorLogName] = useState<string | null>(null);
   const [errorLogLoading, setErrorLogLoading] = useState(false);
   const [errorLogError, setErrorLogError] = useState<string | null>(null);
+  const [errorLogContentLoading, setErrorLogContentLoading] = useState(false);
+  const [hideManagement, setHideManagement] = useState(false);
 
   // 按时间倒序排序的 errorLogs
   const sortedErrorLogs = useMemo(() => {
@@ -154,7 +156,7 @@ export default function LogsPage() {
   }, []);
 
   const fetchErrorLogFile = useCallback(async (name: string) => {
-    setErrorLogLoading(true);
+    setErrorLogContentLoading(true);
     setErrorLogError(null);
     setErrorLogContent(null);
     try {
@@ -166,7 +168,7 @@ export default function LogsPage() {
     } catch (err) {
       setErrorLogError((err as Error).message || "加载失败");
     } finally {
-      setErrorLogLoading(false);
+      setErrorLogContentLoading(false);
     }
   }, []);
 
@@ -175,6 +177,14 @@ export default function LogsPage() {
     fetchLogs("full");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 当时间筛选改变时自动重新加载
+  useEffect(() => {
+    if (afterInput) {
+      fetchLogs("full");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [afterInput]);
 
   useEffect(() => {
     fetchErrorLogs();
@@ -201,7 +211,7 @@ export default function LogsPage() {
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-semibold hover:border-slate-500"
             title="仅获取上次记录之后的新日志"
           >
-            获取新日志
+            获取最新日志
           </button>
         </div>
       </header>
@@ -239,6 +249,16 @@ export default function LogsPage() {
             </button>
           ))}
         </div>
+        <span className="text-slate-400">|</span>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hideManagement}
+            onChange={(e) => setHideManagement(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+          />
+          <span>隐藏 /v0/management</span>
+        </label>
       </div>
 
       <section className="mt-4 rounded-2xl bg-slate-800/50 p-4 shadow-sm ring-1 ring-slate-700">
@@ -249,7 +269,9 @@ export default function LogsPage() {
           <p className="text-base text-slate-400">未读取到日志，检查是否开启“日志到文件”配置项</p>
         ) : (
           <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900/80 p-4 text-sm text-slate-100">
-            {lines.join("\n")}
+            {lines
+              .filter(line => !hideManagement || !line.includes('/v0/management'))
+              .join("\n")}
           </pre>
         )}
       </section>
@@ -271,7 +293,7 @@ export default function LogsPage() {
           ) : errorLogs.length === 0 ? (
             <p className="mt-3 text-base text-slate-400">暂无 error log 文件</p>
           ) : (
-            <div className="mt-3 divide-y divide-slate-700">
+            <div className="mt-3 max-h-96 overflow-y-auto divide-y divide-slate-700">
               {sortedErrorLogs.map((file) => (
                 <div key={file.name} className="flex items-center justify-between py-2">
                   <div>
@@ -295,7 +317,7 @@ export default function LogsPage() {
             <h2 className="text-lg font-semibold text-white">error log 内容</h2>
             {errorLogName ? <span className="text-sm text-slate-400">{errorLogName}</span> : null}
           </div>
-          {errorLogLoading ? (
+          {errorLogContentLoading ? (
             <Skeleton className="mt-3 h-32" />
           ) : errorLogContent ? (
             <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900/80 p-4 text-sm text-slate-100">
