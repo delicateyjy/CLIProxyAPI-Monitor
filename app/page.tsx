@@ -300,7 +300,7 @@ export default function DashboardPage() {
       } else {
         setLastSyncTime(new Date());
         if (showMessage) setSyncStatus(`已同步 ${data.inserted ?? 0} 条记录`);
-        if (triggerRefresh) setRefreshTrigger((prev) => prev + 1);
+        if (triggerRefresh && (data.inserted ?? 0) > 0) setRefreshTrigger((prev) => prev + 1);
       }
     } catch (err) {
       if (showMessage) setSyncStatus(`同步失败: ${(err as Error).message}`);
