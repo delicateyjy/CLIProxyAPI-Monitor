@@ -366,6 +366,7 @@ export default function ExplorePage() {
   const ScatterTooltip = forwardRef<ScatterTooltipHandle, { getModelColor: (model: string) => string }>(
     ({ getModelColor }, ref) => {
       const [state, setState] = useState<{ point: ExplorePoint; x: number; y: number } | null>(null);
+      const tooltipRef = useRef<HTMLDivElement>(null);
 
       useImperativeHandle(ref, () => ({
         show: (point, x, y) => setState({ point, x, y }),
@@ -374,11 +375,27 @@ export default function ExplorePage() {
 
       if (!state) return null;
 
+      // 计算 tooltip 位置，避免超出屏幕右边缘
+      const tooltipWidth = tooltipRef.current?.offsetWidth ?? 300; // 默认估算宽度
+      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+      
+      // 默认显示在鼠标右侧
+      const defaultLeft = state.x + 12;
+      
+      // 检查是否会超出右边缘（留 20px 余量）
+      const wouldOverflow = defaultLeft + tooltipWidth > viewportWidth - 20;
+      
+      // 根据是否溢出选择定位方式
+      const positionStyle = wouldOverflow
+        ? { right: viewportWidth - state.x + 12 } // 使用 right 定位，显示在鼠标左侧
+        : { left: defaultLeft }; // 使用 left 定位，显示在鼠标右侧
+
       return (
         <div 
-          className="pointer-events-none fixed z-50 rounded-xl bg-slate-900/75 px-3 py-2 text-sm shadow-lg ring-1 ring-slate-600/60 backdrop-blur-sm"
+          ref={tooltipRef}
+          className="pointer-events-none fixed z-50 rounded-xl bg-slate-900/60 px-3 py-2 text-sm shadow-lg ring-1 ring-slate-600/60 backdrop-blur-sm"
           style={{ 
-            left: state.x + 12, 
+            ...positionStyle,
             top: state.y - 10,
             transform: 'translateY(-100%)'
           }}
@@ -1394,7 +1411,13 @@ export default function ExplorePage() {
                         stackId="tokens"
                         stroke="none"
                         fill={getModelColor(model)}
-                        fillOpacity={hiddenModels.has(model) ? 0 : 0.3}
+                        fillOpacity={
+                          hiddenModels.has(model) 
+                            ? 0 
+                            : highlightedModel === null || highlightedModel === model
+                              ? 0.3
+                              : 0.1
+                        }
                         isAnimationActive={false}
                       />
                     ))}
