@@ -178,13 +178,13 @@ export default function DashboardPage() {
   const trendConfig = useMemo(() => {
     const defs = {
       requests: { color: darkMode ? "#60a5fa" : "#3b82f6", formatter: (v: any) => formatCompactNumber(v), name: "请求数" },
-      tokens: { color: "#10b981", formatter: (v: any) => formatCompactNumber(v), name: "Tokens" },
+      tokens: { color: darkMode ? "#4ade80" : "#16a34a", formatter: (v: any) => formatCompactNumber(v), name: "Tokens" },
       cost: { color: "#fbbf24", formatter: (v: any) => formatCurrency(v), name: "费用" },
     };
 
     const visibleKeys = (Object.keys(trendVisible) as Array<keyof typeof trendVisible>).filter((k) => trendVisible[k]);
     
-    // Default mapping
+    // 费用始终使用 cost 轴，避免轴切换导致的重新渲染
     let lineAxisMap: Record<string, string> = {
       requests: "left",
       tokens: "right",
@@ -197,24 +197,26 @@ export default function DashboardPage() {
 
     if (visibleKeys.length === 2) {
       if (!trendVisible.requests) {
-        // requests hidden -> tokens (left), cost (right)
-        lineAxisMap = { requests: "left", tokens: "left", cost: "right" };
+        // requests 隐藏 -> tokens (left), cost (cost)
+        lineAxisMap = { requests: "left", tokens: "left", cost: "cost" };
         leftAxisKey = "tokens";
-        rightAxisKey = "cost";
+        rightAxisKey = "tokens";
+        rightAxisVisible = false;
       } else if (!trendVisible.tokens) {
-        // tokens hidden -> requests (left), cost (right)
-        lineAxisMap = { requests: "left", tokens: "right", cost: "right" };
+        // tokens 隐藏 -> requests (left), cost (cost)
+        lineAxisMap = { requests: "left", tokens: "right", cost: "cost" };
         leftAxisKey = "requests";
-        rightAxisKey = "cost";
+        rightAxisKey = "requests";
+        rightAxisVisible = false;
       } else {
-        // cost hidden -> requests (left), tokens (right)
+        // cost 隐藏 -> requests (left), tokens (right)
         lineAxisMap = { requests: "left", tokens: "right", cost: "cost" };
         leftAxisKey = "requests";
         rightAxisKey = "tokens";
       }
     } else if (visibleKeys.length === 1) {
       const key = visibleKeys[0];
-      lineAxisMap = { requests: "left", tokens: "left", cost: "left" };
+      lineAxisMap = { requests: "left", tokens: "left", cost: "cost" };
       leftAxisKey = key;
       rightAxisVisible = false;
     } else if (visibleKeys.length === 0) {
@@ -741,19 +743,19 @@ export default function DashboardPage() {
               <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className={darkMode ? "text-slate-400" : "text-slate-500"}>输入</span>
-                  <span className={`font-medium ${darkMode ? "text-rose-400" : "text-rose-600"}`}>{formatNumberWithCommas(overviewData.totalInputTokens)}</span>
+                  <span className="font-medium" style={{ color: darkMode ? "#fb7185" : "#e11d48" }}>{formatNumberWithCommas(overviewData.totalInputTokens)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={darkMode ? "text-slate-400" : "text-slate-500"}>输出</span>
-                  <span className={`font-medium ${darkMode ? "text-emerald-400" : "text-emerald-600"}`}>{formatNumberWithCommas(overviewData.totalOutputTokens)}</span>
+                  <span className="font-medium" style={{ color: darkMode ? "#4ade80" : "#16a34a" }}>{formatNumberWithCommas(overviewData.totalOutputTokens)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={darkMode ? "text-slate-400" : "text-slate-500"}>思考</span>
-                  <span className={`font-medium ${darkMode ? "text-amber-400" : "text-amber-600"}`}>{formatNumberWithCommas(overviewData.totalReasoningTokens)}</span>
+                  <span className="font-medium" style={{ color: darkMode ? "#fbbf24" : "#d97706" }}>{formatNumberWithCommas(overviewData.totalReasoningTokens)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={darkMode ? "text-slate-400" : "text-slate-500"}>缓存</span>
-                  <span className={`font-medium ${darkMode ? "text-purple-400" : "text-purple-600"}`}>{formatNumberWithCommas(overviewData.totalCachedTokens)}</span>
+                  <span className="font-medium" style={{ color: darkMode ? "#c084fc" : "#9333ea" }}>{formatNumberWithCommas(overviewData.totalCachedTokens)}</span>
                 </div>
               </div>
             </div>
@@ -844,8 +846,8 @@ export default function DashboardPage() {
                     stroke="#fbbf24"
                     tickFormatter={(v) => formatCurrency(v)}
                     fontSize={12}
-                    hide
-                    width={0}
+                    hide={!trendVisible.cost || (trendVisible.requests && trendVisible.tokens)}
+                    width={trendVisible.cost && (!trendVisible.requests || !trendVisible.tokens) ? undefined : 0}
                   />
                   <Tooltip 
                     content={({ active, payload, label }) => {
@@ -868,7 +870,7 @@ export default function DashboardPage() {
                             {sortedPayload.map((entry: any, index: number) => {
                               let color = entry.color;
                               if (entry.name === "请求数") color = darkMode ? "#60a5fa" : "#3b82f6";
-                              if (entry.name === "Tokens") color = "#10b981";
+                              if (entry.name === "Tokens") color = darkMode ? "#4ade80" : "#16a34a";
                               if (entry.name === "费用") color = "#fbbf24";
                               
                               const value = entry.name === "费用" ? formatCurrency(entry.value) : formatNumberWithCommas(entry.value);
@@ -902,13 +904,13 @@ export default function DashboardPage() {
                       if (!isVisible) {
                         return <span style={{ color: darkMode ? "#94a3b8" : "#cbd5e1", textDecoration: "line-through" }}>{value}</span>;
                       }
-                      const colors: Record<string, string> = { "请求数": darkMode ? "#60a5fa" : "#3b82f6", "Tokens": "#10b981", "费用": "#fbbf24" };
+                      const colors: Record<string, string> = { "请求数": darkMode ? "#60a5fa" : "#3b82f6", "Tokens": darkMode ? "#4ade80" : "#16a34a", "费用": "#fbbf24" };
                       return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }}>{value}</span>;
                     }}
                     itemSorter={(item: any) => ({ requests: 0, tokens: 1, cost: 2 } as Record<string, number>)[item?.dataKey] ?? 999}
                   />
                   <Line hide={!trendVisible.requests} yAxisId={trendConfig.lineAxisMap.requests} type="monotone" dataKey="requests" stroke={darkMode ? "#60a5fa" : "#3b82f6"} strokeWidth={2} name="请求数" dot={{ r: 3, fill: darkMode ? "#60a5fa" : "#3b82f6", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
-                  <Line hide={!trendVisible.tokens} yAxisId={trendConfig.lineAxisMap.tokens} type="monotone" dataKey="tokens" stroke="#10b981" strokeWidth={2} name="Tokens" dot={{ r: 3, fill: "#10b981", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
+                  <Line hide={!trendVisible.tokens} yAxisId={trendConfig.lineAxisMap.tokens} type="monotone" dataKey="tokens" stroke={darkMode ? "#4ade80" : "#16a34a"} strokeWidth={2} name="Tokens" dot={{ r: 3, fill: darkMode ? "#4ade80" : "#16a34a", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
                   <Line hide={!trendVisible.cost} yAxisId={trendConfig.lineAxisMap.cost} type="monotone" dataKey="cost" stroke="#fbbf24" strokeWidth={2} name="费用" dot={{ r: 3, fill: "#fbbf24", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -974,7 +976,7 @@ export default function DashboardPage() {
                         cy="50%"
                         outerRadius="85%"
                         innerRadius="45%"
-                        animationDuration={300}
+                        animationDuration={500}
                         onMouseEnter={(_, index) => {
                           setHoveredPieIndex(index);
                           setPieTooltipOpen(true);
@@ -1539,7 +1541,8 @@ export default function DashboardPage() {
                   stroke="#fbbf24"
                   tickFormatter={(v) => formatCurrency(v)}
                   fontSize={12}
-                  hide={trendConfig.lineAxisMap.cost !== 'cost'}
+                  hide={!trendVisible.cost || (trendVisible.requests && trendVisible.tokens)}
+                  width={trendVisible.cost && (!trendVisible.requests || !trendVisible.tokens) ? undefined : 0}
                 />
                 <Tooltip
                   content={({ active, payload, label }) => {
@@ -1562,7 +1565,7 @@ export default function DashboardPage() {
                           {sortedPayload.map((entry: any, index: number) => {
                             let color = entry.color;
                             if (entry.name === "请求数") color = darkMode ? "#60a5fa" : "#3b82f6";
-                            if (entry.name === "Tokens") color = "#10b981";
+                            if (entry.name === "Tokens") color = darkMode ? "#4ade80" : "#16a34a";
                             if (entry.name === "费用") color = "#fbbf24";
                             
                             const value = entry.name === "费用" ? formatCurrency(entry.value) : formatNumberWithCommas(entry.value);
@@ -1596,13 +1599,13 @@ export default function DashboardPage() {
                     if (!isVisible) {
                       return <span style={{ color: darkMode ? "#94a3b8" : "#cbd5e1", textDecoration: "line-through" }}>{value}</span>;
                     }
-                    const colors: Record<string, string> = { "请求数": darkMode ? "#60a5fa" : "#3b82f6", "Tokens": "#10b981", "费用": "#fbbf24" };
+                    const colors: Record<string, string> = { "请求数": darkMode ? "#60a5fa" : "#3b82f6", "Tokens": darkMode ? "#4ade80" : "#16a34a", "费用": "#fbbf24" };
                     return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }}>{value}</span>;
                   }}
                   itemSorter={(item: any) => ({ requests: 0, tokens: 1, cost: 2 } as Record<string, number>)[item?.dataKey] ?? 999}
                 />
                 <Line hide={!trendVisible.requests} yAxisId={trendConfig.lineAxisMap.requests} type="monotone" dataKey="requests" stroke={darkMode ? "#60a5fa" : "#3b82f6"} strokeWidth={2} name="请求数" dot={{ r: 3, fill: darkMode ? "#60a5fa" : "#3b82f6", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
-                <Line hide={!trendVisible.tokens} yAxisId={trendConfig.lineAxisMap.tokens} type="monotone" dataKey="tokens" stroke="#10b981" strokeWidth={2} name="Tokens" dot={{ r: 3, fill: "#10b981", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
+                <Line hide={!trendVisible.tokens} yAxisId={trendConfig.lineAxisMap.tokens} type="monotone" dataKey="tokens" stroke={darkMode ? "#4ade80" : "#16a34a"} strokeWidth={2} name="Tokens" dot={{ r: 3, fill: darkMode ? "#4ade80" : "#16a34a", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
                 <Line hide={!trendVisible.cost} yAxisId={trendConfig.lineAxisMap.cost} type="monotone" dataKey="cost" stroke="#fbbf24" strokeWidth={2} name="费用" dot={{ r: 3, fill: "#fbbf24", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -1629,7 +1632,7 @@ export default function DashboardPage() {
                       cy="50%"
                       outerRadius="75%"
                       innerRadius="40%"
-                      animationDuration={300}
+                      animationDuration={500}
                       onMouseEnter={(_, index) => {
                         setHoveredPieIndex(index);
                         setPieTooltipOpen(true);
