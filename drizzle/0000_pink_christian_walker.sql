@@ -1,13 +1,14 @@
-CREATE TABLE IF NOT EXISTS "model_prices" (
+CREATE TABLE "model_prices" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"model" text NOT NULL,
-	"input_price_per_1k" numeric(10, 4) NOT NULL,
-	"output_price_per_1k" numeric(10, 4) NOT NULL,
+	"input_price_per_1m" numeric(10, 4) NOT NULL,
+	"cached_input_price_per_1m" numeric(10, 4) DEFAULT '0' NOT NULL,
+	"output_price_per_1m" numeric(10, 4) NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "model_prices_model_unique" UNIQUE("model")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "usage_records" (
+CREATE TABLE "usage_records" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"occurred_at" timestamp with time zone NOT NULL,
 	"synced_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -25,4 +26,4 @@ CREATE TABLE IF NOT EXISTS "usage_records" (
 	"raw" text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "usage_records_occurred_route_model_idx" ON "usage_records" USING btree ("occurred_at","route","model");
+CREATE UNIQUE INDEX "usage_records_occurred_route_model_idx" ON "usage_records" USING btree ("occurred_at","route","model");

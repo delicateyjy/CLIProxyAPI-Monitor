@@ -1,5 +1,5 @@
 {
-  "id": "837b3e56-0123-41b8-81b9-51128fb74881",
+  "id": "30644093-528f-48c1-a4b6-c75d12fcc934",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -20,14 +20,21 @@
           "primaryKey": false,
           "notNull": true
         },
-        "input_price_per_1k": {
-          "name": "input_price_per_1k",
+        "input_price_per_1m": {
+          "name": "input_price_per_1m",
           "type": "numeric(10, 4)",
           "primaryKey": false,
           "notNull": true
         },
-        "output_price_per_1k": {
-          "name": "output_price_per_1k",
+        "cached_input_price_per_1m": {
+          "name": "cached_input_price_per_1m",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "output_price_per_1m": {
+          "name": "output_price_per_1m",
           "type": "numeric(10, 4)",
           "primaryKey": false,
           "notNull": true
@@ -51,7 +58,10 @@
             "model"
           ]
         }
-      }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
     "public.usage_records": {
       "name": "usage_records",
@@ -183,12 +193,18 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {},
   "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
