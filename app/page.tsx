@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, startTransition, type FormEvent } from "react";
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, ComposedChart, PieChart, Pie, Cell } from "recharts";
+import { ResponsiveContainer, LineChart, Line, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, ComposedChart, PieChart, Pie, Cell } from "recharts";
 import type { TooltipProps } from "recharts";
 import { formatCurrency, formatNumber, formatCompactNumber, formatNumberWithCommas, formatHourLabel } from "@/lib/utils";
 import { AlertTriangle, Info, LucideIcon, Activity, Save, RefreshCw, Moon, Sun, Pencil, Trash2, Maximize2, CalendarRange, X } from "lucide-react";
@@ -211,6 +211,8 @@ export default function DashboardPage() {
     cachedTokens: true,
   });
 
+  const [fullscreenHourlyMode, setFullscreenHourlyMode] = useState<"bar" | "area">("area");
+
   const handleTrendLegendClick = (e: any) => {
     const { dataKey } = e;
     setTrendVisible((prev) => ({
@@ -219,13 +221,44 @@ export default function DashboardPage() {
     }));
   };
 
-  const handleHourlyLegendClick = (e: any) => {
+  const handleHourlyLegendClick = (e: any, _index?: any, event?: any) => {
     const key = e.dataKey ?? e.payload?.dataKey ?? e.id;
     if (!key) return;
-    setHourlyVisible((prev) => ({
-      ...prev,
-      [key]: !prev[key as string],
-    }));
+    
+    // 检查是否为 Ctrl/Cmd+左键
+    const nativeEvent = event?.nativeEvent || event;
+    const isModifierClick = nativeEvent && (nativeEvent.ctrlKey || nativeEvent.metaKey);
+    
+    if (isModifierClick) {
+      // Ctrl/Cmd+左键：只显示当前项或恢复全部显示
+      const allOthersHidden = Object.keys(hourlyVisible).every(k => k === key || !hourlyVisible[k]);
+      
+      if (allOthersHidden) {
+        // 如果其他都已隐藏，恢复全部显示
+        setHourlyVisible({
+          requests: true,
+          inputTokens: true,
+          outputTokens: true,
+          reasoningTokens: true,
+          cachedTokens: true,
+        });
+      } else {
+        // 隐藏其他，只显示当前项
+        setHourlyVisible({
+          requests: key === "requests",
+          inputTokens: key === "inputTokens",
+          outputTokens: key === "outputTokens",
+          reasoningTokens: key === "reasoningTokens",
+          cachedTokens: key === "cachedTokens",
+        });
+      }
+    } else {
+      // 左键点击：切换当前项
+      setHourlyVisible((prev) => ({
+        ...prev,
+        [key]: !prev[key as string],
+      }));
+    }
   };
 
   const TrendLegend: any = Legend;
@@ -609,6 +642,12 @@ export default function DashboardPage() {
     const hours = hourRange === "12h" ? 12 : 24;
     return buildHourlySeries(overviewData.byHour, hours);
   }, [hourRange, overviewData?.byHour]);
+
+  useEffect(() => {
+    if (fullscreenChart === "stacked") {
+      setFullscreenHourlyMode("area");
+    }
+  }, [fullscreenChart]);
 
   const hourRangeOptions: { key: "all" | "12h" | "24h"; label: string }[] = [
     { key: "all", label: "全部" },
@@ -1609,7 +1648,7 @@ export default function DashboardPage() {
                         "思考": darkMode ? "#fbbf24" : "#d97706",
                         "缓存": darkMode ? "#c084fc" : "#9333ea"
                       };
-                      return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }}>{value}</span>;
+                      return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }} title="按住 Ctrl 点击可只显示该项">{value}</span>;
                     }}
                     itemSorter={(item: any) => ({ requests: 0, inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cachedTokens: 4 } as Record<string, number>)[item?.dataKey] ?? 999}
                     payload={[
@@ -1633,7 +1672,7 @@ export default function DashboardPage() {
                     dataKey="requests" 
                     name="请求数" 
                     stroke={darkMode ? "#60a5fa" : "#3b82f6"} 
-                    strokeWidth={3} 
+                    strokeWidth={3}
                     dot={{ r: 3, fill: darkMode ? "#60a5fa" : "#3b82f6", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} 
                     activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} 
                   />
@@ -1903,9 +1942,9 @@ export default function DashboardPage() {
         isOpen={!!fullscreenChart}
         onClose={() => setFullscreenChart(null)}
         title={
+          fullscreenChart === "stacked" || fullscreenChart === "pie" ? undefined :
           fullscreenChart === "trend" ? "每日请求与 Token 趋势" :
-          fullscreenChart === "pie" ? "模型用量分布" :
-          fullscreenChart === "stacked" ? "每小时负载分布" : ""
+          ""
         }
         darkMode={darkMode}
         className="max-w-6xl"
@@ -2007,255 +2046,342 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           )}
           {fullscreenChart === "pie" && overviewData && overviewData.models.length > 0 && (
-            <div className="flex gap-6 h-full">
-              {/* 饼图 */}
-              <div
-                ref={pieChartFullscreenContainerRef}
-                className="flex-1"
-                onPointerLeave={() => {
-                  cancelPieLegendClear();
-                  setPieTooltipOpen(false);
-                  setHoveredPieIndex(null);
-                }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <Pie
-                      data={overviewData.models}
-                      dataKey={pieMode}
-                      nameKey="model"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius="75%"
-                      innerRadius="40%"
-                      animationDuration={500}
-                      onMouseEnter={(_, index) => {
-                        setHoveredPieIndex(index);
-                        setPieTooltipOpen(true);
-                      }}
-                      onMouseLeave={() => {
-                        setHoveredPieIndex(null);
-                        setPieTooltipOpen(false);
-                      }}
-                    >
-                      {overviewData.models.map((_, index) => (
-                        <Cell 
-                          key={`cell-fs-${index}`} 
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
-                          fillOpacity={hoveredPieIndex === null || hoveredPieIndex === index ? 1 : 0.3}
-                          style={{ transition: 'fill-opacity 0.2s' }}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      position={{ x: 0, y: 0 }}
-                      wrapperStyle={{ zIndex: 1000, pointerEvents: "none" }}
-                      content={({ active, payload }) => {
-                        if (!pieTooltipOpen || hoveredPieIndex === null) return null;
-                        if (!active || !payload || !payload[0]) return null;
-                        const data = payload[0].payload;
-                        return (
-                          <div
-                            className="rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm"
-                            style={{ 
-                              backgroundColor: darkMode ? "rgba(15, 23, 42, 0.7)" : "rgba(255, 255, 255, 0.8)", 
-                              border: `1px solid ${darkMode ? "rgba(148, 163, 184, 0.4)" : "rgba(203, 213, 225, 0.6)"}`,
-                              color: darkMode ? "#f8fafc" : "#0f172a"
-                            }}
-                          >
-                            <p className={`mb-2 font-medium text-sm ${darkMode ? "text-slate-50" : "text-slate-900"}`}>{data.model}</p>
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-blue-400 font-medium">请求数:</span>
-                                <span className={darkMode ? "text-slate-50" : "text-slate-700"}>{formatNumberWithCommas(data.requests)}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="text-emerald-400 font-medium">Tokens:</span>
-                                <span className={darkMode ? "text-slate-50" : "text-slate-700"}>{formatNumberWithCommas(data.tokens)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+            <div className="flex h-full flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-lg font-semibold text-white">模型用量分布</h3>
+                <div className="flex items-center gap-1 pr-5">
+                  <button
+                    type="button"
+                    onClick={() => setPieMode("tokens")}
+                    className={`rounded-md border px-2 py-1 text-xs transition ${
+                      pieMode === "tokens"
+                        ? "border-indigo-500 bg-indigo-600 text-white"
+                        : darkMode ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    Token
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPieMode("requests")}
+                    className={`rounded-md border px-2 py-1 text-xs transition ${
+                      pieMode === "requests"
+                        ? "border-indigo-500 bg-indigo-600 text-white"
+                        : darkMode ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    请求数
+                  </button>
+                </div>
               </div>
-              {/* 自定义图例 */}
-              <div className="w-80 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
-                {[...overviewData.models]
-                  .sort((a, b) => b[pieMode] - a[pieMode])
-                  .map((item) => {
-                    const originalIndex = overviewData.models.findIndex(m => m.model === item.model);
-                    const total = overviewData.models.reduce((sum, m) => sum + m[pieMode], 0);
-                    const percent = total > 0 ? (item[pieMode] / total) * 100 : 0;
-                    const isHighlighted = hoveredPieIndex === null || hoveredPieIndex === originalIndex;
-                    return (
-                      <div 
-                        key={item.model} 
-                        className={`rounded-lg p-3 transition cursor-pointer ${
-                          isHighlighted 
-                            ? darkMode ? "bg-slate-700/30" : "bg-slate-100" 
-                            : "opacity-40"
-                        } ${darkMode ? "hover:bg-slate-700/50" : "hover:bg-slate-200"}`}
-                        onMouseEnter={() => {
-                          cancelPieLegendClear();
-                          setHoveredPieIndex(originalIndex);
+              <div className="flex gap-6 flex-1">
+                {/* 饼图 */}
+                <div
+                  ref={pieChartFullscreenContainerRef}
+                  className="flex-1"
+                  onPointerLeave={() => {
+                    cancelPieLegendClear();
+                    setPieTooltipOpen(false);
+                    setHoveredPieIndex(null);
+                  }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                      <Pie
+                        data={overviewData.models}
+                        dataKey={pieMode}
+                        nameKey="model"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius="75%"
+                        innerRadius="40%"
+                        animationDuration={500}
+                        onMouseEnter={(_, index) => {
+                          setHoveredPieIndex(index);
+                          setPieTooltipOpen(true);
                         }}
                         onMouseLeave={() => {
-                          schedulePieLegendClear();
+                          setHoveredPieIndex(null);
+                          setPieTooltipOpen(false);
                         }}
-                        style={{ transition: 'all 0.2s' }}
                       >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div 
-                            className={`w-4 h-4 rounded-full shrink-0 transition-all duration-200 ${
-                              isHighlighted && hoveredPieIndex === originalIndex ? 'ring-2 ring-offset-1' : ''
-                            }`}
-                            style={{ 
-                              backgroundColor: PIE_COLORS[originalIndex % PIE_COLORS.length],
-                              '--tw-ring-color': isHighlighted && hoveredPieIndex === originalIndex ? PIE_COLORS[originalIndex % PIE_COLORS.length] : 'transparent',
-                              transform: isHighlighted && hoveredPieIndex === originalIndex ? 'scale(1.2)' : 'scale(1)'
-                            } as React.CSSProperties}
+                        {overviewData.models.map((_, index) => (
+                          <Cell 
+                            key={`cell-fs-${index}`} 
+                            fill={PIE_COLORS[index % PIE_COLORS.length]}
+                            fillOpacity={hoveredPieIndex === null || hoveredPieIndex === index ? 1 : 0.3}
+                            style={{ transition: 'fill-opacity 0.2s' }}
                           />
-                          <p className={`text-base font-medium truncate flex-1 ${darkMode ? "text-slate-200" : "text-slate-800"}`} title={item.model}>
-                            {item.model}
-                          </p>
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        position={{ x: 0, y: 0 }}
+                        wrapperStyle={{ zIndex: 1000, pointerEvents: "none" }}
+                        content={({ active, payload }) => {
+                          if (!pieTooltipOpen || hoveredPieIndex === null) return null;
+                          if (!active || !payload || !payload[0]) return null;
+                          const data = payload[0].payload;
+                          return (
+                            <div
+                              className="rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm"
+                              style={{ 
+                                backgroundColor: darkMode ? "rgba(15, 23, 42, 0.7)" : "rgba(255, 255, 255, 0.8)", 
+                                border: `1px solid ${darkMode ? "rgba(148, 163, 184, 0.4)" : "rgba(203, 213, 225, 0.6)"}`,
+                                color: darkMode ? "#f8fafc" : "#0f172a"
+                              }}
+                            >
+                              <p className={`mb-2 font-medium text-sm ${darkMode ? "text-slate-50" : "text-slate-900"}`}>{data.model}</p>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-blue-400 font-medium">请求数:</span>
+                                  <span className={darkMode ? "text-slate-50" : "text-slate-700"}>{formatNumberWithCommas(data.requests)}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="text-emerald-400 font-medium">Tokens:</span>
+                                  <span className={darkMode ? "text-slate-50" : "text-slate-700"}>{formatNumberWithCommas(data.tokens)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* 自定义图例 */}
+                <div className="w-80 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                  {[...overviewData.models]
+                    .sort((a, b) => b[pieMode] - a[pieMode])
+                    .map((item) => {
+                      const originalIndex = overviewData.models.findIndex(m => m.model === item.model);
+                      const total = overviewData.models.reduce((sum, m) => sum + m[pieMode], 0);
+                      const percent = total > 0 ? (item[pieMode] / total) * 100 : 0;
+                      const isHighlighted = hoveredPieIndex === null || hoveredPieIndex === originalIndex;
+                      return (
+                        <div 
+                          key={item.model} 
+                          className={`rounded-lg p-3 transition cursor-pointer ${
+                            isHighlighted 
+                              ? darkMode ? "bg-slate-700/30" : "bg-slate-100" 
+                              : "opacity-40"
+                          } ${darkMode ? "hover:bg-slate-700/50" : "hover:bg-slate-200"}`}
+                          onMouseEnter={() => {
+                            cancelPieLegendClear();
+                            setHoveredPieIndex(originalIndex);
+                          }}
+                          onMouseLeave={() => {
+                            schedulePieLegendClear();
+                          }}
+                          style={{ transition: 'all 0.2s' }}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div 
+                              className={`w-4 h-4 rounded-full shrink-0 transition-all duration-200 ${
+                                isHighlighted && hoveredPieIndex === originalIndex ? 'ring-2 ring-offset-1' : ''
+                              }`}
+                              style={{ 
+                                backgroundColor: PIE_COLORS[originalIndex % PIE_COLORS.length],
+                                '--tw-ring-color': isHighlighted && hoveredPieIndex === originalIndex ? PIE_COLORS[originalIndex % PIE_COLORS.length] : 'transparent',
+                                transform: isHighlighted && hoveredPieIndex === originalIndex ? 'scale(1.2)' : 'scale(1)'
+                              } as React.CSSProperties}
+                            />
+                            <p className={`text-base font-medium truncate flex-1 ${darkMode ? "text-slate-200" : "text-slate-800"}`} title={item.model}>
+                              {item.model}
+                            </p>
+                          </div>
+                          <div className={`text-sm ${darkMode ? "text-slate-400" : "text-slate-600"} ml-6`}>
+                            <span className="font-semibold">{percent.toFixed(1)}%</span>
+                            <span className="mx-1.5">·</span>
+                            <span>{pieMode === "tokens" ? formatCompactNumber(item.tokens) : formatNumberWithCommas(item.requests)} {pieMode === "tokens" ? "tokens" : "次"}</span>
+                          </div>
                         </div>
-                        <div className={`text-sm ${darkMode ? "text-slate-400" : "text-slate-600"} ml-6`}>
-                          <span className="font-semibold">{percent.toFixed(1)}%</span>
-                          <span className="mx-1.5">·</span>
-                          <span>{pieMode === "tokens" ? formatCompactNumber(item.tokens) : formatNumberWithCommas(item.requests)} {pieMode === "tokens" ? "tokens" : "次"}</span>
-                        </div>
-                      </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
           {fullscreenChart === "stacked" && overviewData && (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={hourlySeries} margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradInputFS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#fca5a5" />
-                    <stop offset="100%" stopColor="#f87171" />
-                  </linearGradient>
-                  <linearGradient id="gradOutputFS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#86efac" />
-                    <stop offset="100%" stopColor="#4ade80" />
-                  </linearGradient>
-                  <linearGradient id="gradReasoningFS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#fcd34d" />
-                    <stop offset="100%" stopColor="#fbbf24" />
-                  </linearGradient>
-                  <linearGradient id="gradCachedFS" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#d8b4fe" />
-                    <stop offset="100%" stopColor="#c084fc" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#334155" : "#e2e8f0"} />
-                <XAxis dataKey="label" stroke={darkMode ? "#94a3b8" : "#64748b"} fontSize={12} tickFormatter={formatHourLabel} />
-                <YAxis yAxisId="left" stroke={darkMode ? "#60a5fa" : "#3b82f6"} tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
-                <YAxis yAxisId="right" orientation="right" stroke={darkMode ? "#94a3b8" : "#64748b"} tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
-                <Tooltip 
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const sortedPayload = [...payload].sort((a: any, b: any) => {
-                      const order: Record<string, number> = { requests: 0, inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cachedTokens: 4 };
-                      return (order[a.dataKey] ?? 999) - (order[b.dataKey] ?? 999);
-                    });
-                    return (
-                      <div 
-                        className="rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm"
-                        style={{ 
-                          backgroundColor: darkMode ? "rgba(15, 23, 42, 0.7)" : "rgba(255, 255, 255, 0.8)", 
-                          border: `1px solid ${darkMode ? "rgba(148, 163, 184, 0.4)" : "rgba(203, 213, 225, 0.6)"}`,
-                          color: darkMode ? "#f8fafc" : "#0f172a"
-                        }}
+            <div className="flex h-full flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold text-white">每小时负载分布</h3>
+                  <div className="flex items-center gap-1">
+                    {hourRangeOptions.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => setHourRange(opt.key)}
+                        className={`rounded-md border px-2 py-1 text-xs transition ${
+                          hourRange === opt.key
+                            ? "border-indigo-500 bg-indigo-600 text-white"
+                            : darkMode ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                        }`}
                       >
-                        <p className={`mb-2 font-medium text-sm ${darkMode ? "text-slate-50" : "text-slate-900"}`}>{label ? formatHourLabel(String(label)) : ''}</p>
-                        <div className="space-y-1">
-                          {sortedPayload.map((entry: any, index: number) => {
-                            let color = entry.color;
-                            if (entry.name === "输入") color = darkMode ? "#fb7185" : "#e11d48";
-                            if (entry.name === "输出") color = darkMode ? "#4ade80" : "#16a34a";
-                            if (entry.name === "思考") color = darkMode ? "#fbbf24" : "#d97706";
-                            if (entry.name === "缓存") color = darkMode ? "#c084fc" : "#9333ea";
-                            if (entry.name === "请求数") color = darkMode ? "#60a5fa" : "#3b82f6";
-                            
-                            return (
-                              <div key={index} className="flex items-center gap-2 text-sm">
-                                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                                <span style={{ color: color }} className="font-medium">
-                                  {entry.name}:
-                                </span>
-                                <span className={darkMode ? "text-slate-50" : "text-slate-700"}>
-                                  {formatNumberWithCommas(entry.value)}
-                                </span>
-                              </div>
-                            );
-                          })}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 pr-5">
+                  <button
+                    type="button"
+                    onClick={() => setFullscreenHourlyMode("area")}
+                    className={`rounded-md border px-2 py-1 text-xs transition ${
+                      fullscreenHourlyMode === "area"
+                        ? "border-indigo-500 bg-indigo-600 text-white"
+                        : darkMode ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    堆积面积图
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFullscreenHourlyMode("bar")}
+                    className={`rounded-md border px-2 py-1 text-xs transition ${
+                      fullscreenHourlyMode === "bar"
+                        ? "border-indigo-500 bg-indigo-600 text-white"
+                        : darkMode ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    堆积柱状图
+                  </button>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={hourlySeries} margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gradInputFS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#fca5a5" />
+                      <stop offset="100%" stopColor="#f87171" />
+                    </linearGradient>
+                    <linearGradient id="gradOutputFS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#86efac" />
+                      <stop offset="100%" stopColor="#4ade80" />
+                    </linearGradient>
+                    <linearGradient id="gradReasoningFS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#fcd34d" />
+                      <stop offset="100%" stopColor="#fbbf24" />
+                    </linearGradient>
+                    <linearGradient id="gradCachedFS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#d8b4fe" />
+                      <stop offset="100%" stopColor="#c084fc" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#334155" : "#e2e8f0"} />
+                  <XAxis dataKey="label" stroke={darkMode ? "#94a3b8" : "#64748b"} fontSize={12} tickFormatter={formatHourLabel} />
+                  <YAxis yAxisId="left" stroke={darkMode ? "#60a5fa" : "#3b82f6"} tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
+                  <YAxis yAxisId="right" orientation="right" stroke={darkMode ? "#94a3b8" : "#64748b"} tickFormatter={(v) => formatCompactNumber(v)} fontSize={12} />
+                  <Tooltip 
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const sortedPayload = [...payload].sort((a: any, b: any) => {
+                        const order: Record<string, number> = { requests: 0, inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cachedTokens: 4 };
+                        return (order[a.dataKey] ?? 999) - (order[b.dataKey] ?? 999);
+                      });
+                      return (
+                        <div 
+                          className="rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm"
+                          style={{ 
+                            backgroundColor: darkMode ? "rgba(15, 23, 42, 0.7)" : "rgba(255, 255, 255, 0.8)", 
+                            border: `1px solid ${darkMode ? "rgba(148, 163, 184, 0.4)" : "rgba(203, 213, 225, 0.6)"}`,
+                            color: darkMode ? "#f8fafc" : "#0f172a"
+                          }}
+                        >
+                          <p className={`mb-2 font-medium text-sm ${darkMode ? "text-slate-50" : "text-slate-900"}`}>{label ? formatHourLabel(String(label)) : ''}</p>
+                          <div className="space-y-1">
+                            {sortedPayload.map((entry: any, index: number) => {
+                              let color = entry.color;
+                              if (entry.name === "输入") color = darkMode ? "#fb7185" : "#e11d48";
+                              if (entry.name === "输出") color = darkMode ? "#4ade80" : "#16a34a";
+                              if (entry.name === "思考") color = darkMode ? "#fbbf24" : "#d97706";
+                              if (entry.name === "缓存") color = darkMode ? "#c084fc" : "#9333ea";
+                              if (entry.name === "请求数") color = darkMode ? "#60a5fa" : "#3b82f6";
+                              
+                              return (
+                                <div key={index} className="flex items-center gap-2 text-sm">
+                                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+                                  <span style={{ color: color }} className="font-medium">
+                                    {entry.name}:
+                                  </span>
+                                  <span className={darkMode ? "text-slate-50" : "text-slate-700"}>
+                                    {formatNumberWithCommas(entry.value)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  }}
-                />
-                <TrendLegend 
-                  wrapperStyle={{ cursor: "pointer" }} 
-                  onClick={handleHourlyLegendClick}
-                  formatter={(value: string) => {
-                    const keyMap: Record<string, string> = {
-                      "请求数": "requests",
-                      "输入": "inputTokens",
-                      "输出": "outputTokens",
-                      "思考": "reasoningTokens",
-                      "缓存": "cachedTokens"
-                    };
-                    const key = keyMap[value];
-                    const isVisible = hourlyVisible[key];
-                    
-                    if (!isVisible) {
-                      return <span style={{ color: darkMode ? "#94a3b8" : "#cbd5e1", textDecoration: "line-through" }}>{value}</span>;
-                    }
+                      );
+                    }}
+                  />
+                  <TrendLegend 
+                    wrapperStyle={{ cursor: "pointer" }} 
+                    onClick={handleHourlyLegendClick}
+                    formatter={(value: string) => {
+                      const keyMap: Record<string, string> = {
+                        "请求数": "requests",
+                        "输入": "inputTokens",
+                        "输出": "outputTokens",
+                        "思考": "reasoningTokens",
+                        "缓存": "cachedTokens"
+                      };
+                      const key = keyMap[value];
+                      const isVisible = hourlyVisible[key];
+                      
+                      if (!isVisible) {
+                        return <span style={{ color: darkMode ? "#94a3b8" : "#cbd5e1", textDecoration: "line-through" }}>{value}</span>;
+                      }
 
-                    const colors: Record<string, string> = {
-                      "请求数": darkMode ? "#60a5fa" : "#3b82f6",
-                      "输入": darkMode ? "#fb7185" : "#e11d48",
-                      "输出": darkMode ? "#4ade80" : "#16a34a",
-                      "思考": darkMode ? "#fbbf24" : "#d97706",
-                      "缓存": darkMode ? "#c084fc" : "#9333ea"
-                    };
-                    return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }}>{value}</span>;
-                  }}
-                  itemSorter={(item: any) => ({ requests: 0, inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cachedTokens: 4 } as Record<string, number>)[item?.dataKey] ?? 999}
-                  payload={[
-                    { value: "请求数", type: "line", id: "requests", color: "#3b82f6", dataKey: "requests" },
-                    { value: "输入", type: "square", id: "inputTokens", color: "#e11d48", dataKey: "inputTokens" },
-                    { value: "输出", type: "square", id: "outputTokens", color: "#16a34a", dataKey: "outputTokens" },
-                    { value: "思考", type: "square", id: "reasoningTokens", color: "#d97706", dataKey: "reasoningTokens" },
-                    { value: "缓存", type: "square", id: "cachedTokens", color: "#9333ea", dataKey: "cachedTokens" },
-                  ]}
-                />
-                {/* 堆积柱状图 - 柔和配色，仅顶部圆角，增强动画 */}
-                <Bar hide={!hourlyVisible.inputTokens} yAxisId="right" dataKey="inputTokens" name="输入" stackId="tokens" fill="url(#gradInputFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
-                <Bar hide={!hourlyVisible.outputTokens} yAxisId="right" dataKey="outputTokens" name="输出" stackId="tokens" fill="url(#gradOutputFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
-                <Bar hide={!hourlyVisible.reasoningTokens} yAxisId="right" dataKey="reasoningTokens" name="思考" stackId="tokens" fill="url(#gradReasoningFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
-                <Bar hide={!hourlyVisible.cachedTokens} yAxisId="right" dataKey="cachedTokens" name="缓存" stackId="tokens" fill="url(#gradCachedFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
-                {/* 曲线在最上层 - 带描边突出显示 */}
-                <Line 
-                  hide={!hourlyVisible.requests}
-                  yAxisId="left" 
-                  type="monotone" 
-                  dataKey="requests" 
-                  name="请求数" 
-                  stroke={darkMode ? "#60a5fa" : "#3b82f6"} 
-                  strokeWidth={3} 
-                  dot={{ r: 3, fill: darkMode ? "#60a5fa" : "#3b82f6", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} 
-                  activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} 
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+                      const colors: Record<string, string> = {
+                        "请求数": darkMode ? "#60a5fa" : "#3b82f6",
+                        "输入": darkMode ? "#fb7185" : "#e11d48",
+                        "输出": darkMode ? "#4ade80" : "#16a34a",
+                        "思考": darkMode ? "#fbbf24" : "#d97706",
+                        "缓存": darkMode ? "#c084fc" : "#9333ea"
+                      };
+                      return <span style={{ color: colors[value] || "inherit", fontWeight: 500 }} title="按住 Ctrl 点击可只显示该项">{value}</span>;
+                    }}
+                    itemSorter={(item: any) => ({ requests: 0, inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cachedTokens: 4 } as Record<string, number>)[item?.dataKey] ?? 999}
+                    payload={[
+                      { value: "请求数", type: "line", id: "requests", color: "#3b82f6", dataKey: "requests" },
+                      { value: "输入", type: "square", id: "inputTokens", color: "#e11d48", dataKey: "inputTokens" },
+                      { value: "输出", type: "square", id: "outputTokens", color: "#16a34a", dataKey: "outputTokens" },
+                      { value: "思考", type: "square", id: "reasoningTokens", color: "#d97706", dataKey: "reasoningTokens" },
+                      { value: "缓存", type: "square", id: "cachedTokens", color: "#9333ea", dataKey: "cachedTokens" },
+                    ]}
+                  />
+                  {/* 堆积图层：支持柱状与面积切换 */}
+                  {fullscreenHourlyMode === "area" ? (
+                    <>
+                      <Area hide={!hourlyVisible.inputTokens} yAxisId="right" dataKey="inputTokens" name="输入" stackId="tokens" type="monotone" stroke="#fca5a5" fill="url(#gradInputFS)" fillOpacity={0.35} animationDuration={600} />
+                      <Area hide={!hourlyVisible.outputTokens} yAxisId="right" dataKey="outputTokens" name="输出" stackId="tokens" type="monotone" stroke="#4ade80" fill="url(#gradOutputFS)" fillOpacity={0.35} animationDuration={600} />
+                      <Area hide={!hourlyVisible.reasoningTokens} yAxisId="right" dataKey="reasoningTokens" name="思考" stackId="tokens" type="monotone" stroke="#fbbf24" fill="url(#gradReasoningFS)" fillOpacity={0.35} animationDuration={600} />
+                      <Area hide={!hourlyVisible.cachedTokens} yAxisId="right" dataKey="cachedTokens" name="缓存" stackId="tokens" type="monotone" stroke="#c084fc" fill="url(#gradCachedFS)" fillOpacity={0.35} animationDuration={600} />
+                    </>
+                  ) : (
+                    <>
+                      <Bar hide={!hourlyVisible.inputTokens} yAxisId="right" dataKey="inputTokens" name="输入" stackId="tokens" fill="url(#gradInputFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
+                      <Bar hide={!hourlyVisible.outputTokens} yAxisId="right" dataKey="outputTokens" name="输出" stackId="tokens" fill="url(#gradOutputFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
+                      <Bar hide={!hourlyVisible.reasoningTokens} yAxisId="right" dataKey="reasoningTokens" name="思考" stackId="tokens" fill="url(#gradReasoningFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
+                      <Bar hide={!hourlyVisible.cachedTokens} yAxisId="right" dataKey="cachedTokens" name="缓存" stackId="tokens" fill="url(#gradCachedFS)" fillOpacity={0.8} animationDuration={600} barSize={32} />
+                    </>
+                  )}
+                  {/* 曲线在最上层 - 带描边突出显示 */}
+                  <Line 
+                    hide={!hourlyVisible.requests}
+                    yAxisId="left" 
+                    type="monotone" 
+                    dataKey="requests" 
+                    name="请求数" 
+                    stroke={darkMode ? "#60a5fa" : "#3b82f6"} 
+                    strokeWidth={fullscreenHourlyMode === "area" ? 2.3 : 3}
+                    strokeOpacity={1}
+                    dot={{ r: 3, fill: darkMode ? "#60a5fa" : "#3b82f6", stroke: "#fff", strokeWidth: 1, fillOpacity: 0.2 }} 
+                    activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }} 
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
       </Modal>
