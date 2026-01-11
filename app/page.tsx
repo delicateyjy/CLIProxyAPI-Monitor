@@ -405,13 +405,23 @@ export default function DashboardPage() {
   }, []);
 
   // 执行数据同步
-  const doSync = useCallback(async (showMessage = true, triggerRefresh = true) => {
+  const doSync = useCallback(async (showMessage = true, triggerRefresh = true, timeout = 60000) => {
     if (syncingRef.current) return;
     syncingRef.current = true;
     setSyncing(true);
     setSyncStatus(null);
     try {
-      const res = await fetch("/api/sync", { method: "POST", cache: "no-store" });
+      // 创建超时控制器（默认 60 秒，首屏加载时为 5 秒）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      const res = await fetch("/api/sync", { 
+        method: "POST", 
+        cache: "no-store",
+        signal: controller.signal 
+      });
+      clearTimeout(timeoutId);
+      
       const data = await res.json();
       if (!res.ok) {
         const errorMsg = `同步失败: ${data.error || res.statusText}`;
@@ -446,7 +456,11 @@ export default function DashboardPage() {
         if (triggerRefresh && inserted > 0) setRefreshTrigger((prev) => prev + 1);
       }
     } catch (err) {
-      const errorMsg = `同步失败: ${(err as Error).message}`;
+      // 判断是否为超时错误
+      const isTimeout = (err as Error).name === "AbortError";
+      const errorMsg = isTimeout 
+        ? "同步超时：数据同步可能需要更长时间，建议稍后手动刷新" 
+        : `同步失败: ${(err as Error).message}`;
       setSyncStatus(errorMsg);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("lastSyncStatus", errorMsg);
@@ -472,7 +486,7 @@ export default function DashboardPage() {
 
     const run = async () => {
       try {
-        await doSync(true, false);
+        await doSync(true, false, 5000); // 首屏加载使用 5 秒超时
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(autoSyncKey, "1");
         }
@@ -1007,7 +1021,7 @@ export default function DashboardPage() {
           ) : null}
         </div>
         {loadingOverview ? <span className="text-sm text-slate-400">加载中...</span> : null}
-        {showEmpty ? <span className="text-sm text-slate-400">暂无数据，先触发同步</span> : null}
+        {/* {showEmpty ? <span className="text-sm text-slate-400">暂无数据，先触发同步</span> : null} */}
       </div>
 
       {/* 统计卡片 - 单行填满 */}
@@ -2208,20 +2222,22 @@ export default function DashboardPage() {
       {syncStatus && (
         <div
           onClick={() => closeSyncStatus()}
-          className={`fixed right-6 top-24 z-50 cursor-pointer rounded-lg border px-4 py-3 shadow-lg transition-opacity hover:opacity-90 ${
+          className={`fixed right-6 top-24 z-50 max-w-[290px] cursor-pointer rounded-lg border px-4 py-3 shadow-lg transition-opacity hover:opacity-90 ${
             syncStatusClosing ? "animate-toast-out" : "animate-toast-in"
           } ${
-            syncStatus.includes("失败")
+            syncStatus.includes("失败") || syncStatus.includes("超时")
               ? darkMode
-                ? "border-red-500/40 bg-red-900/80 text-red-100"
-                : "border-red-400 bg-red-50 text-red-900"
+                ? "border-rose-500/30 bg-rose-950/60 text-rose-200"
+                : "border-rose-300 bg-rose-50 text-rose-800"
               : darkMode
               ? "border-green-500/40 bg-green-900/80 text-green-100"
               : "border-green-400 bg-green-50 text-green-900"
           }`}
         >
           <div className="flex items-center gap-2.5">
-            <span className="text-xl animate-emoji-pop">{syncStatus.includes("失败") ? "❌" : "✅"}</span>
+            <span className="text-xl animate-emoji-pop">
+              {syncStatus.includes("失败") || syncStatus.includes("超时") ? "❌" : "✅"}
+            </span>
             <span className="text-sm font-medium">{syncStatus}</span>
           </div>
         </div>
@@ -2230,7 +2246,7 @@ export default function DashboardPage() {
       {saveStatus && (
         <div
           onClick={() => closeSaveStatus()}
-          className={`fixed right-6 top-24 z-50 cursor-pointer rounded-lg border px-4 py-3 shadow-lg transition-opacity hover:opacity-90 ${
+          className={`fixed right-6 top-24 z-50 max-w-[290px] cursor-pointer rounded-lg border px-4 py-3 shadow-lg transition-opacity hover:opacity-90 ${
             saveStatusClosing ? "animate-toast-out" : "animate-toast-in"
           } ${
             darkMode
